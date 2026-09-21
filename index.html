@@ -87,7 +87,7 @@
                     <i class="fa-solid fa-clock-rotate-left"></i>
                     <span class="hidden lg:inline">กู้คืนข้อมูล</span>
                 </button>
-                <button onclick="backupJSON()" class="bg-white/10 hover:bg-white/20 text-white font-medium px-3 py-2.5 rounded-xl transition border border-white/20 text-sm flex items-center gap-1.5 cursor-pointer" title="ดาวน์โหลดไฟล์สำรองข้อมูล (JSON)">
+                <button onclick="backupJSON()" class="bg-white/10 hover:bg-white/20 text-white font-medium px-3.5 py-2.5 rounded-xl transition border border-white/20 text-sm flex items-center gap-1.5 cursor-pointer" title="ดาวน์โหลดไฟล์สำรองข้อมูล (JSON)">
                     <i class="fa-solid fa-download"></i>
                     <span class="hidden lg:inline">สำรองข้อมูล</span>
                 </button>
@@ -331,6 +331,17 @@
                 <input type="date" id="confirmModalInput" class="w-full px-3 py-2 rounded-xl border border-slate-200 focus:ring-2 focus:ring-brand-500 outline-none text-sm">
             </div>
 
+            <div class="flex justify-end gap-2 pt-2 border-t border-slate-100">
+                <button onclick="closeConfirmModal()" class="px-4 py-2 rounded-xl text-slate-600 hover:bg-slate-100 text-xs font-medium transition cursor-pointer">
+                    ยกเลิก
+                </button>
+                <button id="confirmModalOkBtn" class="px-4 py-2 rounded-xl bg-brand-600 hover:bg-brand-700 text-white text-xs font-medium transition shadow cursor-pointer">
+                    ตกลง
+                </button>
+            </div>
+        </div>
+    </div>
+
     <!-- Firebase Cloud Settings Modal -->
     <div id="cloudModal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
         <div class="bg-white rounded-2xl shadow-2xl max-w-lg w-full p-6 space-y-4 max-h-[90vh] overflow-y-auto">
@@ -477,7 +488,6 @@
                         try {
                             config = JSON.parse(savedConfigStr);
                         } catch(e) {
-                            // Extract JSON object if pasted as js code
                             const match = savedConfigStr.match(/\{[\s\S]*\}/);
                             if (match) config = JSON.parse(match[0]);
                         }
@@ -502,13 +512,18 @@
                 auth = getAuth(app);
                 db = getFirestore(app);
 
-                // Authenticate
-                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-                    const userCred = await signInWithCustomToken(auth, __initial_auth_token);
-                    currentUser = userCred.user;
-                } else {
-                    const userCred = await signInAnonymously(auth);
-                    currentUser = userCred.user;
+                // Try Authentication safely without blocking
+                try {
+                    if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                        const userCred = await signInWithCustomToken(auth, __initial_auth_token);
+                        currentUser = userCred.user;
+                    } else {
+                        const userCred = await signInAnonymously(auth);
+                        currentUser = userCred.user;
+                    }
+                } catch(authErr) {
+                    console.warn("Firebase Auth bypassed:", authErr);
+                    currentUser = { uid: 'guest-user' };
                 }
 
                 cloudConnected = true;
@@ -529,12 +544,11 @@
                         saveToLocalStorage();
                         renderOrders();
                     } else if (orders.length > 0) {
-                        // Push initial local orders to cloud if cloud is empty
                         syncAllToCloud();
                     }
                 }, (error) => {
                     console.error("Firestore onSnapshot error:", error);
-                    updateCloudUI(false, 'คลาวด์: ข้อผิดพลาด');
+                    updateCloudUI(false, 'คลาวด์: ตั้งค่า Firestore');
                 });
 
             } catch (err) {
@@ -546,7 +560,7 @@
 
         // Save or update order in Firestore
         async function saveOrderToCloud(order) {
-            if (!cloudConnected || !db || !currentUser) return;
+            if (!cloudConnected || !db) return;
             try {
                 const { doc, setDoc } = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js");
                 await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'orders', order.id), order);
@@ -557,7 +571,7 @@
 
         // Delete order from Firestore
         async function deleteOrderFromCloud(orderId) {
-            if (!cloudConnected || !db || !currentUser) return;
+            if (!cloudConnected || !db) return;
             try {
                 const { doc, deleteDoc } = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js");
                 await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'orders', orderId));
@@ -568,7 +582,7 @@
 
         // Sync all local orders to cloud
         async function syncAllToCloud() {
-            if (!cloudConnected || !db || !currentUser) return;
+            if (!cloudConnected || !db) return;
             orders.forEach(ord => saveOrderToCloud(ord));
         }
 
@@ -614,7 +628,6 @@
                 return;
             }
             try {
-                // Validate json
                 let parsed = null;
                 try {
                     parsed = JSON.parse(val);
@@ -715,7 +728,6 @@
                 }
             } catch (e) {}
 
-            // Combine existingList and allFound, then deduplicate
             const combined = [...existingList];
             
             allFound.forEach(foundItem => {
@@ -758,7 +770,6 @@
             showToast('คัดลอกข้อมูลความจำทั้งหมด (Raw Data) สำเร็จ!', 'success');
         }
 
-        // Open Recovery Center Modal
         function openRecoveryModal() {
             const modal = document.getElementById('recoveryModal');
             const summary = document.getElementById('recoveryScanSummary');
@@ -775,13 +786,11 @@
             if (modal) modal.classList.remove('hidden');
         }
 
-        // Close Recovery Center Modal
         function closeRecoveryModal() {
             const modal = document.getElementById('recoveryModal');
             if (modal) modal.classList.add('hidden');
         }
 
-        // Trigger Deep Recover and Merge
         function deepRecoverAllData() {
             const merged = deepScanAndMergeAllLocalStorage(orders);
             const addedCount = merged.length - orders.length;
@@ -797,7 +806,6 @@
             }
         }
 
-        // Paste Restore JSON Text directly
         function pasteRestoreJSON() {
             const text = document.getElementById('pasteJsonInput').value.trim();
             if (!text) {
@@ -834,10 +842,8 @@
             }
         }
 
-        // Load data safely from LocalStorage with Auto-Recovery & Normalization
         function loadOrders() {
             try {
-                // Perform deep scan across all LocalStorage keys
                 const mergedData = deepScanAndMergeAllLocalStorage([]);
 
                 if (mergedData.length > 0) {
@@ -853,12 +859,6 @@
             renderOrders();
         }
 
-        // Manual button click handler to scan and recover data
-        function manualRecoverData() {
-            openRecoveryModal();
-        }
-
-        // Save data safely to LocalStorage
         function saveToLocalStorage() {
             try {
                 localStorage.setItem('pharma_orders_multi_data', JSON.stringify(orders));
@@ -868,7 +868,6 @@
             }
         }
 
-        // Add Dynamic Drug Item Row in Modal Form
         function addDrugItemRow(drugName = '', quantity = 1, unit = 'กล่อง', itemNotes = '') {
             const container = document.getElementById('drugItemsContainer');
             const rowId = 'row-' + Date.now() + '-' + Math.floor(Math.random() * 1000);
@@ -904,7 +903,6 @@
             container.appendChild(row);
         }
 
-        // Remove Dynamic Drug Item Row
         function removeDrugItemRow(rowId) {
             const container = document.getElementById('drugItemsContainer');
             if (container.children.length <= 1) {
@@ -915,7 +913,6 @@
             if (row) row.remove();
         }
 
-        // Render Table and Dashboard Statistics
         function renderOrders() {
             const tbody = document.getElementById('ordersTableBody');
             const emptyState = document.getElementById('emptyState');
@@ -924,13 +921,11 @@
             const dateStart = document.getElementById('filterDateStart').value;
             const dateEnd = document.getElementById('filterDateEnd').value;
 
-            // Filter logic
             const filteredOrders = orders.filter(order => {
                 const matchesRep = order.repName && order.repName.toLowerCase().includes(searchTerm);
                 const matchesCompany = order.company && order.company.toLowerCase().includes(searchTerm);
                 const matchesNotes = order.notes && order.notes.toLowerCase().includes(searchTerm);
                 
-                // Match search inside drug items list
                 const matchesDrugs = order.items && order.items.some(item => 
                     (item.drugName && item.drugName.toLowerCase().includes(searchTerm)) ||
                     (item.unit && item.unit.toLowerCase().includes(searchTerm)) ||
@@ -950,10 +945,8 @@
                 return matchesSearch && matchesDate && matchesStatus;
             });
 
-            // Sort by Date descending
             filteredOrders.sort((a, b) => new Date(b.date) - new Date(a.date));
 
-            // Clear table
             tbody.innerHTML = '';
 
             if (filteredOrders.length === 0) {
@@ -965,7 +958,6 @@
                     const tr = document.createElement('tr');
                     tr.className = 'hover:bg-slate-50/80 transition group';
 
-                    // Build formatted drug items HTML
                     let itemsHtml = '<ul class="space-y-1 py-1">';
                     (order.items || []).forEach((item) => {
                         itemsHtml += `
@@ -983,7 +975,6 @@
                     });
                     itemsHtml += '</ul>';
 
-                    // Status Badge
                     const isReceived = order.status === 'received';
                     const statusBadgeHtml = isReceived ? `
                         <button onclick="quickToggleReceived('${order.id}')" class="inline-flex flex-col text-left px-3 py-1.5 rounded-xl bg-emerald-50 border border-emerald-200 hover:bg-emerald-100 transition text-emerald-800 cursor-pointer" title="คลิกเพื่อเปลี่ยนสถานะ">
@@ -1034,11 +1025,9 @@
                 });
             }
 
-            // Update Dashboard Stats
             updateDashboardStats(filteredOrders);
         }
 
-        // Update Dashboard Summary Cards
         function updateDashboardStats(dataList) {
             const totalOrders = dataList.length;
             const receivedOrders = dataList.filter(o => o.status === 'received').length;
@@ -1052,7 +1041,6 @@
             document.getElementById('statTotalReps').textContent = uniqueReps.toLocaleString('th-TH') + ' ท่าน';
         }
 
-        // Open Modal (Add Mode)
         function openModal() {
             document.getElementById('modalTitle').textContent = 'เพิ่มรายการสั่งยาใหม่';
             document.getElementById('modalIcon').innerHTML = '<i class="fa-solid fa-plus"></i>';
@@ -1063,7 +1051,6 @@
             document.getElementById('receivedDate').valueAsDate = new Date();
             toggleReceivedDateVisibility();
             
-            // Clear drug items container and add 1 default row
             const container = document.getElementById('drugItemsContainer');
             container.innerHTML = '';
             addDrugItemRow();
@@ -1071,12 +1058,10 @@
             document.getElementById('orderModal').classList.remove('hidden');
         }
 
-        // Close Modal
         function closeModal() {
             document.getElementById('orderModal').classList.add('hidden');
         }
 
-        // Save Form (Add or Edit)
         function handleFormSubmit(e) {
             e.preventDefault();
 
@@ -1137,7 +1122,6 @@
             closeModal();
         }
 
-        // Edit Order
         function editOrder(id) {
             const order = orders.find(o => o.id === id);
             if (!order) return;
@@ -1154,7 +1138,6 @@
 
             toggleReceivedDateVisibility();
 
-            // Populate drug items container
             const container = document.getElementById('drugItemsContainer');
             container.innerHTML = '';
 
@@ -1169,7 +1152,6 @@
             document.getElementById('orderModal').classList.remove('hidden');
         }
 
-        // Delete Order Confirm
         function confirmDeleteOrder(id) {
             const order = orders.find(o => o.id === id);
             if (!order) return;
@@ -1192,7 +1174,6 @@
             });
         }
 
-        // Reset Filter controls
         function resetFilters() {
             document.getElementById('searchInput').value = '';
             document.getElementById('filterStatus').value = 'all';
@@ -1202,18 +1183,16 @@
             showToast('ล้างเงื่อนไขการกรองแล้ว', 'info');
         }
 
-        // Export Orders to CSV File
         function exportToCSV() {
             if (orders.length === 0) {
                 showToast('ไม่มีข้อมูลสำหรับการส่งออก', 'error');
                 return;
             }
 
-            // Headers in Thai
             const headers = ['วันที่สั่ง (วัน/เดือน/ปี)', 'ชื่อผู้แทนยา', 'บริษัทยา', 'รายการยาที่สั่ง (ชื่อยา | จำนวน หน่วย | หมายเหตุยา)', 'สถานะการรับสินค้า', 'วันที่ได้รับสินค้า', 'หมายเหตุสั่งซื้อ'];
             
             const csvRows = [];
-            csvRows.push('\uFEFF' + headers.join(',')); // Add UTF-8 BOM for Excel Thai language compatibility
+            csvRows.push('\uFEFF' + headers.join(','));
 
             orders.forEach(item => {
                 const formattedDate = formatDate(item.date);
@@ -1249,7 +1228,6 @@
             showToast('ส่งออกไฟล์ CSV สำเร็จ', 'success');
         }
 
-        // Backup Data as JSON File
         function backupJSON() {
             if (orders.length === 0) {
                 showToast('ไม่มีข้อมูลสำหรับสำรอง', 'error');
@@ -1265,7 +1243,6 @@
             showToast('ดาวน์โหลดไฟล์สำรองข้อมูล JSON เรียบร้อย', 'success');
         }
 
-        // Restore Data from JSON File
         function restoreJSON(event) {
             const file = event.target.files[0];
             if (!file) return;
@@ -1290,7 +1267,6 @@
             event.target.value = '';
         }
 
-        // Toast Notification System
         function showToast(message, type = 'success') {
             const container = document.getElementById('toastContainer');
             const toast = document.createElement('div');
@@ -1324,7 +1300,6 @@
             }, 3000);
         }
 
-        // Toggle visibility of received date input in modal
         function toggleReceivedDateVisibility() {
             const status = document.getElementById('orderStatus').value;
             const receivedGroup = document.getElementById('receivedDateGroup');
@@ -1336,7 +1311,6 @@
             }
         }
 
-        // Quick Toggle Received Status from Table
         function quickToggleReceived(id) {
             const order = orders.find(o => o.id === id);
             if (!order) return;
@@ -1380,7 +1354,6 @@
             }
         }
 
-        // Show Custom Confirmation Modal
         function showConfirmDialog({ title, message, iconClass, iconBg, okText, okBg, showDateInput, defaultDate, onConfirm }) {
             const modal = document.getElementById('confirmModal');
             document.getElementById('confirmModalTitle').textContent = title || 'ยืนยันการทำรายการ';
@@ -1413,14 +1386,12 @@
             modal.classList.remove('hidden');
         }
 
-        // Close Custom Confirmation Modal
         function closeConfirmModal() {
             const modal = document.getElementById('confirmModal');
             if (modal) modal.classList.add('hidden');
             confirmCallback = null;
         }
 
-        // Helper: Format Date to Day/Month/Year (วัน/เดือน/ปี e.g. 15/09/2026)
         function formatDate(dateStr) {
             if (!dateStr) return '-';
             const parts = dateStr.split('-');
@@ -1430,7 +1401,6 @@
             return dateStr;
         }
 
-        // Helper: Escape HTML string to prevent XSS
         function escapeHtml(text) {
             if (!text) return '';
             const map = {
@@ -1443,7 +1413,6 @@
             return String(text).replace(/[&<>"']/g, m => map[m]);
         }
 
-        // Auto-initialize when page finishes loading
         if (document.readyState === 'loading') {
             document.addEventListener('DOMContentLoaded', () => {
                 loadOrders();
