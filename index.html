@@ -1,0 +1,1235 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ระบบบันทึกการสั่งยากับเซลล์ยา (Pharma Order Tracker)</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Font Awesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Fonts: Prompt -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Prompt', 'sans-serif'],
+                    },
+                    colors: {
+                        brand: {
+                            50: '#f0f9ff',
+                            100: '#e0f2fe',
+                            500: '#0ea5e9',
+                            600: '#0284c7',
+                            700: '#0369a1',
+                            800: '#075985',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body {
+            font-family: 'Prompt', sans-serif;
+            background-color: #f8fafc;
+        }
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #f1f5f9;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8;
+        }
+    </style>
+</head>
+<body class="text-slate-800 antialiased min-h-screen flex flex-col justify-between">
+
+    <!-- Header Navbar -->
+    <header class="bg-gradient-to-r from-brand-700 to-teal-600 text-white shadow-lg sticky top-0 z-30">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex flex-col sm:flex-row justify-between items-center gap-4">
+            <div class="flex items-center space-x-3">
+                <div class="bg-white/20 p-2.5 rounded-xl backdrop-blur-sm">
+                    <i class="fa-solid font-bold fa-capsules text-2xl text-white"></i>
+                </div>
+                <div>
+                    <h1 class="text-xl sm:text-2xl font-bold tracking-tight">Pharma Order Tracker</h1>
+                    <p class="text-xs text-brand-100 font-light">ระบบบันทึกและจัดการการสั่งยากับเซลล์ผู้แทนยา</p>
+                </div>
+            </div>
+            <div class="flex items-center space-x-2">
+                <button onclick="openModal()" class="bg-emerald-500 hover:bg-emerald-600 text-white font-medium px-4 py-2.5 rounded-xl shadow-md hover:shadow-lg transition flex items-center gap-2 text-sm sm:text-base cursor-pointer">
+                    <i class="fa-solid fa-circle-plus"></i>
+                    <span>เพิ่มการสั่งยาใหม่</span>
+                </button>
+                <button onclick="exportToCSV()" class="bg-white/10 hover:bg-white/20 text-white font-medium px-3.5 py-2.5 rounded-xl transition border border-white/20 text-sm flex items-center gap-1.5 cursor-pointer" title="ส่งออกข้อมูลเป็น CSV">
+                    <i class="fa-solid fa-file-excel"></i>
+                    <span class="hidden md:inline">Export CSV</span>
+                </button>
+                <button onclick="openRecoveryModal()" class="bg-amber-500/80 hover:bg-amber-500 text-white font-medium px-3 py-2.5 rounded-xl transition border border-white/20 text-sm flex items-center gap-1.5 cursor-pointer" title="สแกนและกู้คืนข้อมูลเก่าทั้งหมด">
+                    <i class="fa-solid fa-clock-rotate-left"></i>
+                    <span class="hidden lg:inline">กู้คืนข้อมูล</span>
+                </button>
+                <button onclick="backupJSON()" class="bg-white/10 hover:bg-white/20 text-white font-medium px-3 py-2.5 rounded-xl transition border border-white/20 text-sm flex items-center gap-1.5 cursor-pointer" title="ดาวน์โหลดไฟล์สำรองข้อมูล (JSON)">
+                    <i class="fa-solid fa-download"></i>
+                    <span class="hidden lg:inline">สำรองข้อมูล</span>
+                </button>
+                <label class="bg-white/10 hover:bg-white/20 text-white font-medium px-3 py-2.5 rounded-xl transition border border-white/20 text-sm flex items-center gap-1.5 cursor-pointer" title="นำเข้าไฟล์สำรองข้อมูล (JSON)">
+                    <i class="fa-solid fa-upload"></i>
+                    <span class="hidden lg:inline">นำเข้า</span>
+                    <input type="file" id="jsonInput" accept=".json" onchange="restoreJSON(event)" class="hidden">
+                </label>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 flex-1">
+
+        <!-- Summary Statistics Cards -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+            <!-- Card 1: Total Orders -->
+            <div class="bg-white rounded-2xl p-5 shadow-sm border border-slate-100 flex items-center justify-between">
+                <div>
+                    <p class="text-xs font-medium text-slate-400 uppercase tracking-wider">จำนวนคำสั่งซื้อทั้งหมด</p>
+                    <h3 id="statTotalOrders" class="text-2xl font-bold text-slate-800 mt-1">0 รายการ</h3>
+                </div>
+                <div class="w-12 h-12 bg-brand-50 rounded-xl flex items-center justify-center text-brand-600 text-xl">
+                    <i class="fa-solid fa-boxes-packing"></i>
+                </div>
+            </div>
+            <!-- Card 2: Received Items -->
+            <div class="bg-white rounded-2xl p-5 shadow-sm border border-slate-100 flex items-center justify-between">
+                <div>
+                    <p class="text-xs font-medium text-slate-400 uppercase tracking-wider">ได้รับสินค้าแล้ว</p>
+                    <h3 id="statReceivedOrders" class="text-2xl font-bold text-emerald-600 mt-1">0 รายการ</h3>
+                </div>
+                <div class="w-12 h-12 bg-emerald-50 rounded-xl flex items-center justify-center text-emerald-600 text-xl">
+                    <i class="fa-solid fa-circle-check"></i>
+                </div>
+            </div>
+            <!-- Card 3: Total Companies -->
+            <div class="bg-white rounded-2xl p-5 shadow-sm border border-slate-100 flex items-center justify-between">
+                <div>
+                    <p class="text-xs font-medium text-slate-400 uppercase tracking-wider">บริษัทยาที่สั่งซื้อ</p>
+                    <h3 id="statTotalCompanies" class="text-2xl font-bold text-slate-800 mt-1">0 บริษัท</h3>
+                </div>
+                <div class="w-12 h-12 bg-indigo-50 rounded-xl flex items-center justify-center text-indigo-600 text-xl">
+                    <i class="fa-solid fa-building-flag"></i>
+                </div>
+            </div>
+            <!-- Card 4: Total Representatives -->
+            <div class="bg-white rounded-2xl p-5 shadow-sm border border-slate-100 flex items-center justify-between">
+                <div>
+                    <p class="text-xs font-medium text-slate-400 uppercase tracking-wider">ผู้แทนยาที่ติดต่อ</p>
+                    <h3 id="statTotalReps" class="text-2xl font-bold text-slate-800 mt-1">0 ท่าน</h3>
+                </div>
+                <div class="w-12 h-12 bg-amber-50 rounded-xl flex items-center justify-center text-amber-600 text-xl">
+                    <i class="fa-solid fa-user-tie"></i>
+                </div>
+            </div>
+        </div>
+
+        <!-- Search and Filter Bar -->
+        <div class="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 mb-6 flex flex-col md:flex-row gap-3 justify-between items-center">
+            <div class="relative w-full md:w-80">
+                <i class="fa-solid fa-magnifying-glass absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400"></i>
+                <input type="text" id="searchInput" oninput="renderOrders()" placeholder="ค้นหาชื่อผู้แทน, บริษัท, หรือรายการยา..." 
+                       class="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-brand-500 text-sm transition">
+            </div>
+
+            <div class="flex flex-wrap items-center gap-2 w-full md:w-auto justify-end">
+                <div class="flex items-center gap-2 w-full sm:w-auto">
+                    <label for="filterStatus" class="text-xs font-medium text-slate-500 whitespace-nowrap">สถานะ:</label>
+                    <select id="filterStatus" onchange="renderOrders()" class="px-3 py-2 rounded-xl border border-slate-200 text-sm focus:ring-2 focus:ring-brand-500 outline-none w-full sm:w-auto bg-white">
+                        <option value="all">ทั้งหมด</option>
+                        <option value="pending">⏳ รอรับสินค้า</option>
+                        <option value="received">✅ ได้รับสินค้าแล้ว</option>
+                    </select>
+                </div>
+                <div class="flex items-center gap-2 w-full sm:w-auto">
+                    <label for="filterDateStart" class="text-xs font-medium text-slate-500 whitespace-nowrap">ตั้งแต่:</label>
+                    <input type="date" id="filterDateStart" onchange="renderOrders()" class="px-3 py-2 rounded-xl border border-slate-200 text-sm focus:ring-2 focus:ring-brand-500 outline-none w-full sm:w-auto">
+                </div>
+                <div class="flex items-center gap-2 w-full sm:w-auto">
+                    <label for="filterDateEnd" class="text-xs font-medium text-slate-500 whitespace-nowrap">ถึง:</label>
+                    <input type="date" id="filterDateEnd" onchange="renderOrders()" class="px-3 py-2 rounded-xl border border-slate-200 text-sm focus:ring-2 focus:ring-brand-500 outline-none w-full sm:w-auto">
+                </div>
+                <button onclick="resetFilters()" class="px-3 py-2 text-xs font-medium text-slate-500 hover:text-slate-700 hover:bg-slate-100 rounded-xl transition cursor-pointer">
+                    <i class="fa-solid fa-rotate-left mr-1"></i> ล้างการกรอง
+                </button>
+            </div>
+        </div>
+
+        <!-- Data Table Container -->
+        <div class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+            <div class="overflow-x-auto">
+                <table class="w-full text-left border-collapse">
+                    <thead>
+                        <tr class="bg-slate-50 text-slate-600 text-xs font-semibold uppercase tracking-wider border-b border-slate-100">
+                            <th class="py-4 px-4 sm:px-6">วันที่สั่ง (วัน/เดือน/ปี)</th>
+                            <th class="py-4 px-4 sm:px-6">บริษัทยา / ผู้แทน</th>
+                            <th class="py-4 px-4 sm:px-6">รายการยาที่สั่ง (ชื่อยา / จำนวน / หน่วย / หมายเหตุ)</th>
+                            <th class="py-4 px-4 sm:px-6">สถานะการรับสินค้า</th>
+                            <th class="py-4 px-4 sm:px-6">หมายเหตุสั่งซื้อ</th>
+                            <th class="py-4 px-4 sm:px-6 text-center">จัดการ</th>
+                        </tr>
+                    </thead>
+                    <tbody id="ordersTableBody" class="divide-y divide-slate-100 text-sm text-slate-700">
+                        <!-- Data rows will be injected here via JS -->
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Empty State -->
+            <div id="emptyState" class="hidden py-16 text-center">
+                <div class="w-20 h-20 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-4 text-slate-400 text-3xl">
+                    <i class="fa-solid fa-folder-open"></i>
+                </div>
+                <h4 class="text-base font-semibold text-slate-600">ไม่พบข้อมูลการสั่งยา</h4>
+                <p class="text-xs text-slate-400 mt-1">ลองเปลี่ยนคำค้นหา หรือกดปุ่ม "เพิ่มการสั่งยาใหม่" เพื่อเริ่มต้นบันทึกข้อมูล</p>
+                <button onclick="openModal()" class="mt-4 px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white text-xs font-medium rounded-xl transition shadow cursor-pointer">
+                    + เพิ่มรายการใหม่
+                </button>
+            </div>
+        </div>
+    </main>
+
+    <footer class="bg-white border-t border-slate-200 py-4 mt-8">
+        <div class="max-w-7xl mx-auto px-4 text-center text-xs text-slate-500">
+            Pharma Order Management System &copy; 2026 | พัฒนาขึ้นสำหรับการบันทึกและบริหารจัดการการสั่งยา
+        </div>
+    </footer>
+
+    <!-- Add/Edit Order Modal -->
+    <div id="orderModal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4 overflow-y-auto">
+        <div class="bg-white rounded-2xl shadow-2xl max-w-3xl w-full my-8 overflow-hidden flex flex-col max-h-[90vh]">
+            <!-- Modal Header -->
+            <div class="bg-gradient-to-r from-brand-700 to-teal-600 px-6 py-4 text-white flex justify-between items-center shrink-0">
+                <div class="flex items-center space-x-2.5">
+                    <div id="modalIcon" class="w-8 h-8 rounded-lg bg-white/20 flex items-center justify-center text-white text-base">
+                        <i class="fa-solid fa-plus"></i>
+                    </div>
+                    <h3 id="modalTitle" class="text-lg font-bold">เพิ่มรายการสั่งยาใหม่</h3>
+                </div>
+                <button onclick="closeModal()" class="text-white/80 hover:text-white p-1 rounded-lg hover:bg-white/10 transition cursor-pointer">
+                    <i class="fa-solid fa-xmark text-xl"></i>
+                </button>
+            </div>
+
+            <!-- Modal Body (Scrollable) -->
+            <form id="orderForm" onsubmit="handleFormSubmit(event)" class="p-6 overflow-y-auto flex-1 space-y-5">
+                <input type="hidden" id="orderId">
+
+                <!-- Order Date, Rep Name, Company -->
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <div>
+                        <label for="orderDate" class="block text-xs font-semibold text-slate-700 mb-1">วันที่สั่งซื้อ *</label>
+                        <input type="date" id="orderDate" required class="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm focus:ring-2 focus:ring-brand-500 outline-none">
+                    </div>
+                    <div>
+                        <label for="repName" class="block text-xs font-semibold text-slate-700 mb-1">ชื่อผู้แทนยา *</label>
+                        <input type="text" id="repName" required placeholder="เช่น สมชาย ใจดี" class="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm focus:ring-2 focus:ring-brand-500 outline-none">
+                    </div>
+                    <div>
+                        <label for="company" class="block text-xs font-semibold text-slate-700 mb-1">บริษัทยา *</label>
+                        <input type="text" id="company" required placeholder="เช่น Pharma Healthcare" class="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm focus:ring-2 focus:ring-brand-500 outline-none">
+                    </div>
+                </div>
+
+                <!-- Status & Received Date -->
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-slate-50 p-3.5 rounded-xl border border-slate-100">
+                    <div>
+                        <label for="orderStatus" class="block text-xs font-semibold text-slate-700 mb-1">สถานะการรับสินค้า</label>
+                        <select id="orderStatus" onchange="toggleReceivedDateVisibility()" class="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm focus:ring-2 focus:ring-brand-500 outline-none bg-white">
+                            <option value="pending">⏳ รอรับสินค้า</option>
+                            <option value="received">✅ ได้รับสินค้าแล้ว</option>
+                        </select>
+                    </div>
+                    <div id="receivedDateGroup" class="hidden">
+                        <label for="receivedDate" class="block text-xs font-semibold text-slate-700 mb-1">วันที่ได้รับสินค้า</label>
+                        <input type="date" id="receivedDate" class="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm focus:ring-2 focus:ring-brand-500 outline-none bg-white">
+                    </div>
+                </div>
+
+                <!-- Dynamic Drug Items Section -->
+                <div class="space-y-3">
+                    <div class="flex justify-between items-center">
+                        <label class="block text-xs font-semibold text-slate-700">รายการยาที่สั่งซื้อ *</label>
+                        <button type="button" onclick="addDrugItemRow()" class="text-xs font-medium text-brand-600 hover:text-brand-700 bg-brand-50 hover:bg-brand-100 px-3 py-1.5 rounded-lg transition flex items-center gap-1 cursor-pointer">
+                            <i class="fa-solid fa-plus text-xs"></i> เพิ่มรายการยา
+                        </button>
+                    </div>
+
+                    <!-- Header for Grid on Desktop -->
+                    <div class="hidden sm:grid sm:grid-cols-12 gap-2 text-[11px] font-semibold text-slate-400 px-1">
+                        <div class="col-span-4">ชื่อยา</div>
+                        <div class="col-span-2">จำนวน</div>
+                        <div class="col-span-2">หน่วยสินค้า</div>
+                        <div class="col-span-3">หมายเหตุยา</div>
+                        <div class="col-span-1 text-center">จัดการ</div>
+                    </div>
+
+                    <div id="drugItemsContainer" class="space-y-2">
+                        <!-- Dynamic Rows appended by JS -->
+                    </div>
+                </div>
+
+                <!-- Order Notes -->
+                <div>
+                    <label for="notes" class="block text-xs font-semibold text-slate-700 mb-1">หมายเหตุสั่งซื้อ (ถ้ามี)</label>
+                    <textarea id="notes" rows="2" placeholder="เช่น ส่งของช่วงบ่าย, วางบิลปลายเดือน" class="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm focus:ring-2 focus:ring-brand-500 outline-none resize-none"></textarea>
+                </div>
+
+                <!-- Modal Footer Buttons -->
+                <div class="pt-3 border-t border-slate-100 flex justify-end gap-2">
+                    <button type="button" onclick="closeModal()" class="px-4 py-2.5 rounded-xl text-slate-600 hover:bg-slate-100 text-sm font-medium transition cursor-pointer">
+                        ยกเลิก
+                    </button>
+                    <button type="submit" class="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium transition shadow-md flex items-center gap-1.5 cursor-pointer">
+                        <i class="fa-solid fa-floppy-disk"></i>
+                        <span>บันทึกข้อมูล</span>
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Custom Confirmation Modal -->
+    <div id="confirmModal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 space-y-4">
+            <div class="flex items-center space-x-3">
+                <div id="confirmModalIcon" class="w-10 h-10 rounded-xl bg-amber-100 text-amber-600 flex items-center justify-center text-xl shrink-0">
+                    <i class="fa-solid fa-circle-question"></i>
+                </div>
+                <div>
+                    <h3 id="confirmModalTitle" class="text-base font-bold text-slate-800">ยืนยันการทำรายการ</h3>
+                    <p id="confirmModalMsg" class="text-xs text-slate-500 mt-0.5">คุณต้องการดำเนินการต่อหรือไม่?</p>
+                </div>
+            </div>
+            
+            <!-- Dynamic Date Input for Status Toggle -->
+            <div id="confirmModalInputGroup" class="hidden space-y-1">
+                <label class="block text-xs font-medium text-slate-600">ระบุวันที่ได้รับสินค้า:</label>
+                <input type="date" id="confirmModalInput" class="w-full px-3 py-2 rounded-xl border border-slate-200 focus:ring-2 focus:ring-brand-500 outline-none text-sm">
+            </div>
+
+            <div class="flex justify-end gap-2 pt-2">
+                <button onclick="closeConfirmModal()" class="px-4 py-2 rounded-xl text-slate-600 hover:bg-slate-100 text-xs font-medium transition cursor-pointer">
+                    ยกเลิก
+                </button>
+                <button id="confirmModalOkBtn" class="px-4 py-2 rounded-xl bg-brand-600 hover:bg-brand-700 text-white text-xs font-medium transition shadow cursor-pointer">
+                    ตกลง
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Notification Container -->
+    <div id="toastContainer" class="fixed bottom-5 right-5 z-50 space-y-2 pointer-events-none"></div>
+
+    <!-- Advanced Recovery & Paste Modal -->
+    <div id="recoveryModal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl shadow-2xl max-w-xl w-full p-6 space-y-4 max-h-[90vh] overflow-y-auto">
+            <div class="flex justify-between items-center border-b border-slate-100 pb-3">
+                <div class="flex items-center space-x-2 text-amber-600">
+                    <i class="fa-solid fa-box-archive text-xl"></i>
+                    <h3 class="text-base font-bold text-slate-800">ศูนย์กู้คืนข้อมูลและรวมข้อมูลเก่า</h3>
+                </div>
+                <button onclick="closeRecoveryModal()" class="text-slate-400 hover:text-slate-600 p-1">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            
+            <p class="text-xs text-slate-600 leading-relaxed">
+                ระบบจะสแกนหาข้อมูลการสั่งยาจากโครงสร้างเดิมและเวอร์ชันย้อนหลังทั้งหมดที่เคยบันทึกไว้ในเบราว์เซอร์นี้ นำมารวมกับรายการปัจจุบันให้อัตโนมัติ
+            </p>
+
+            <div id="recoveryScanSummary" class="bg-slate-50 p-3 rounded-xl border border-slate-200 text-xs text-slate-700 space-y-1">
+                <!-- Scan summary injected via JS -->
+            </div>
+
+            <!-- Raw LocalStorage Export Button -->
+            <div class="bg-amber-50 p-3 rounded-xl border border-amber-200 text-xs text-amber-900 flex justify-between items-center">
+                <div>
+                    <span class="font-bold block">ต้องการสำรองข้อมูลดิบทั้งหมดชัวร์ๆ?</span>
+                    <span class="text-[11px] text-amber-700">คัดลอกข้อมูลทั้งหมดที่อยู่ใน LocalStorage เก็บไว้กันหายได้ทันที</span>
+                </div>
+                <button onclick="copyRawStorageDump()" class="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white font-medium rounded-lg transition shrink-0 ml-2">
+                    <i class="fa-solid fa-copy mr-1"></i> คัดลอกข้อมูลดิบ
+                </button>
+            </div>
+
+            <div class="space-y-1.5 pt-2 border-t border-slate-100">
+                <label class="block text-xs font-semibold text-slate-700">วางข้อความสำรองข้อมูล (JSON) โดยตรง:</label>
+                <textarea id="pasteJsonInput" rows="3" placeholder="หากมีข้อความสำรองข้อมูล สามารถคัดลอกมาวางที่นี่ได้..." class="w-full p-2.5 text-xs rounded-xl border border-slate-200 outline-none focus:ring-2 focus:ring-brand-500 font-mono"></textarea>
+            </div>
+
+            <div class="flex flex-wrap justify-end gap-2 pt-2 border-t border-slate-100">
+                <button onclick="closeRecoveryModal()" class="px-4 py-2 rounded-xl text-slate-600 hover:bg-slate-100 text-xs font-medium transition cursor-pointer">
+                    ปิด
+                </button>
+                <button onclick="pasteRestoreJSON()" class="px-4 py-2 rounded-xl bg-slate-700 hover:bg-slate-800 text-white text-xs font-medium transition cursor-pointer">
+                    นำเข้าจากข้อความ
+                </button>
+                <button onclick="deepRecoverAllData()" class="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-medium transition shadow cursor-pointer">
+                    <i class="fa-solid fa-wand-magic-sparkles mr-1"></i> สแกนและรวมข้อมูลทั้งหมด
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Initial Sample Data
+        const sampleOrders = [
+            {
+                id: 'ORD-1710000000001',
+                date: '2026-09-15',
+                repName: 'สมชาย ใจดี',
+                company: 'Pharma Care Co., Ltd.',
+                status: 'received',
+                receivedDate: '2026-09-17',
+                items: [
+                    { drugName: 'Paracetamol 500mg', quantity: 50, unit: 'กล่อง', itemNotes: 'แถม 5 กล่อง' },
+                    { drugName: 'Amoxicillin 500mg', quantity: 20, unit: 'กล่อง', itemNotes: '' }
+                ],
+                notes: 'ส่งของช่วงเช้า นัดวางบิลสัปดาห์หน้า'
+            },
+            {
+                id: 'ORD-1710000000002',
+                date: '2026-09-18',
+                repName: 'วิภาวรรณ สุขเสริฐ',
+                company: 'MediHealth Thailand',
+                status: 'pending',
+                receivedDate: '',
+                items: [
+                    { drugName: 'Omeprazole 20mg', quantity: 30, unit: 'กล่อง', itemNotes: 'โปรโมชั่นซื้อ 10 แถม 1' }
+                ],
+                notes: 'ติดด่วน ขอส่งภายในวันศุกร์'
+            }
+        ];
+
+        // Global State
+        let orders = [];
+        let confirmCallback = null;
+
+        function normalizeOrder(order) {
+            if (!order || typeof order !== 'object') return null;
+
+            let items = Array.isArray(order.items) ? order.items : [];
+            
+            // Convert legacy single-drug format
+            if (items.length === 0 && (order.drugName || order.drug_name || order.name || order.title)) {
+                items = [{
+                    drugName: order.drugName || order.drug_name || order.name || order.title || 'ไม่ระบุชื่อยา',
+                    quantity: parseFloat(order.quantity || order.qty || order.amount) || 1,
+                    unit: order.unit || order.unitName || 'กล่อง',
+                    itemNotes: order.itemNotes || order.item_notes || order.note || (order.price ? `ราคา: ${order.price}` : '')
+                }];
+            }
+
+            // Standardize items array
+            items = items.map(item => ({
+                drugName: item.drugName || item.drug_name || item.name || 'ไม่ระบุชื่อยา',
+                quantity: parseFloat(item.quantity || item.qty || item.amount) || 1,
+                unit: item.unit || 'กล่อง',
+                itemNotes: item.itemNotes || item.notes || ''
+            }));
+
+            if (items.length === 0) {
+                // If company or repName or notes exist, don't discard
+                if (order.company || order.repName || order.rep_name || order.company_name || order.notes || order.date) {
+                    items = [{ drugName: order.drugName || order.drug_name || 'ไม่ระบุชื่อยา', quantity: parseFloat(order.quantity) || 1, unit: order.unit || 'กล่อง', itemNotes: order.itemNotes || '' }];
+                } else {
+                    return null;
+                }
+            }
+
+            return {
+                id: order.id || ('ORD-' + Date.now() + '-' + Math.floor(Math.random() * 100000)),
+                date: order.date || order.orderDate || new Date().toISOString().slice(0, 10),
+                repName: order.repName || order.rep_name || order.rep || 'ไม่ระบุ',
+                company: order.company || order.company_name || order.supplier || 'ไม่ระบุ',
+                status: order.status || 'pending',
+                receivedDate: order.receivedDate || order.received_date || '',
+                items: items,
+                notes: order.notes || order.note || ''
+            };
+        }
+
+        function deepScanAndMergeAllLocalStorage(existingList = []) {
+            const allFound = [];
+
+            try {
+                for (let i = 0; i < localStorage.length; i++) {
+                    const key = localStorage.key(i);
+                    if (!key) continue;
+                    try {
+                        const raw = localStorage.getItem(key);
+                        if (!raw) continue;
+                        const parsed = JSON.parse(raw);
+
+                        if (Array.isArray(parsed)) {
+                            parsed.forEach(item => {
+                                const norm = normalizeOrder(item);
+                                if (norm) {
+                                    allFound.push(norm);
+                                }
+                            });
+                        } else if (typeof parsed === 'object') {
+                            const norm = normalizeOrder(parsed);
+                            if (norm) {
+                                allFound.push(norm);
+                            }
+                        }
+                    } catch (e) {}
+                }
+            } catch (e) {}
+
+            // Combine existingList and allFound, then deduplicate
+            const combined = [...existingList];
+            
+            allFound.forEach(foundItem => {
+                const exists = combined.some(item => 
+                    item.id === foundItem.id || 
+                    (item.date === foundItem.date && 
+                     item.company === foundItem.company && 
+                     item.repName === foundItem.repName && 
+                     JSON.stringify(item.items) === JSON.stringify(foundItem.items))
+                );
+                if (!exists) {
+                    combined.push(foundItem);
+                }
+            });
+
+            return combined;
+        }
+
+        function copyRawStorageDump() {
+            const storageDump = {};
+            for (let i = 0; i < localStorage.length; i++) {
+                const key = localStorage.key(i);
+                if (key) {
+                    try {
+                        storageDump[key] = JSON.parse(localStorage.getItem(key));
+                    } catch(e) {
+                        storageDump[key] = localStorage.getItem(key);
+                    }
+                }
+            }
+            const dumpText = JSON.stringify(storageDump, null, 2);
+            
+            const tempInput = document.createElement('textarea');
+            tempInput.value = dumpText;
+            document.body.appendChild(tempInput);
+            tempInput.select();
+            document.execCommand('copy');
+            document.body.removeChild(tempInput);
+
+            showToast('คัดลอกข้อมูลความจำทั้งหมด (Raw Data) สำเร็จ!', 'success');
+        }
+
+        // Open Recovery Center Modal
+        function openRecoveryModal() {
+            const modal = document.getElementById('recoveryModal');
+            const summary = document.getElementById('recoveryScanSummary');
+            
+            const scanned = deepScanAndMergeAllLocalStorage([]);
+            if (summary) {
+                summary.innerHTML = `
+                    <div class="font-semibold text-slate-800 mb-1"><i class="fa-solid fa-magnifying-glass mr-1"></i> ผลการตรวจค้นหาความจำเบ็ดเสร็จ:</div>
+                    <div>• รายการที่แสดงอยู่ปัจจุบัน: <b>${orders.length} รายการ</b></div>
+                    <div>• รวมรายการทั้งหมดที่พบในความจำเครื่อง: <b>${scanned.length} รายการ</b></div>
+                    <div class="text-[11px] text-slate-400 mt-1">* หากต้องการดึงรายการทั้งหมดกลับมา ให้กดปุ่ม "สแกนและรวมข้อมูลทั้งหมด"</div>
+                `;
+            }
+            if (modal) modal.classList.remove('hidden');
+        }
+
+        // Close Recovery Center Modal
+        function closeRecoveryModal() {
+            const modal = document.getElementById('recoveryModal');
+            if (modal) modal.classList.add('hidden');
+        }
+
+        // Trigger Deep Recover and Merge
+        function deepRecoverAllData() {
+            const merged = deepScanAndMergeAllLocalStorage(orders);
+            const addedCount = merged.length - orders.length;
+            orders = merged;
+            saveToLocalStorage();
+            renderOrders();
+            closeRecoveryModal();
+
+            if (addedCount > 0) {
+                showToast(`กู้คืนสำเร็จ! ดึงข้อมูลเก่ากลับเข้ามาเพิ่มอีก ${addedCount} รายการ (รวมเป็น ${orders.length} รายการ)`, 'success');
+            } else {
+                showToast(`กู้คืนเรียบร้อยแล้ว ไม่พบรายการเก่าเพิ่มเติม (รวมเป็น ${orders.length} รายการ)`, 'info');
+            }
+        }
+
+        // Paste Restore JSON Text directly
+        function pasteRestoreJSON() {
+            const text = document.getElementById('pasteJsonInput').value.trim();
+            if (!text) {
+                showToast('กรุณาวางข้อความ JSON ก่อนกดนำเข้า', 'error');
+                return;
+            }
+            try {
+                const parsed = JSON.parse(text);
+                let list = Array.isArray(parsed) ? parsed : [parsed];
+                let added = 0;
+
+                list.forEach(item => {
+                    const norm = normalizeOrder(item);
+                    if (norm) {
+                        const exists = orders.some(o => o.id === norm.id);
+                        if (!exists) {
+                            orders.push(norm);
+                            added++;
+                        }
+                    }
+                });
+
+                if (added > 0 || orders.length > 0) {
+                    saveToLocalStorage();
+                    renderOrders();
+                    closeRecoveryModal();
+                    document.getElementById('pasteJsonInput').value = '';
+                    showToast(`นำเข้าสำเร็จ! เพิ่มข้อมูล ${added} รายการ`, 'success');
+                } else {
+                    showToast('ไม่พบข้อมูลสั่งยาในข้อความที่ระบุ', 'error');
+                }
+            } catch (e) {
+                showToast('รูปแบบข้อความ JSON ไม่ถูกต้อง', 'error');
+            }
+        }
+
+        // Load data safely from LocalStorage with Auto-Recovery & Normalization
+        function loadOrders() {
+            try {
+                // Perform deep scan across all LocalStorage keys
+                const mergedData = deepScanAndMergeAllLocalStorage([]);
+
+                if (mergedData.length > 0) {
+                    orders = mergedData;
+                } else {
+                    orders = sampleOrders.map(item => normalizeOrder(item));
+                }
+                saveToLocalStorage();
+            } catch (e) {
+                console.error('LocalStorage load error:', e);
+                orders = sampleOrders.map(item => normalizeOrder(item));
+            }
+            renderOrders();
+        }
+
+        // Manual button click handler to scan and recover data
+        function manualRecoverData() {
+            openRecoveryModal();
+        }
+
+        // Save data safely to LocalStorage
+        function saveToLocalStorage() {
+            try {
+                localStorage.setItem('pharma_orders_multi_data', JSON.stringify(orders));
+            } catch (e) {
+                console.error('LocalStorage save error:', e);
+                showToast('ไม่สามารถบันทึกลงหน่วยความจำเบราว์เซอร์ได้', 'error');
+            }
+        }
+
+        // Add Dynamic Drug Item Row in Modal Form
+        function addDrugItemRow(drugName = '', quantity = 1, unit = 'กล่อง', itemNotes = '') {
+            const container = document.getElementById('drugItemsContainer');
+            const rowId = 'row-' + Date.now() + '-' + Math.floor(Math.random() * 1000);
+
+            const row = document.createElement('div');
+            row.id = rowId;
+            row.className = 'drug-item-row bg-slate-50/80 p-2.5 sm:p-2 rounded-xl border border-slate-200/80 grid grid-cols-1 sm:grid-cols-12 gap-2 items-center transition';
+
+            row.innerHTML = `
+                <div class="sm:col-span-4">
+                    <label class="block text-[11px] font-medium text-slate-500 mb-1 sm:hidden">ชื่อยา *</label>
+                    <input type="text" class="item-drug-name w-full px-3 py-1.5 rounded-lg border border-slate-200 text-sm focus:ring-2 focus:ring-brand-500 outline-none bg-white" required placeholder="เช่น Paracetamol 500mg" value="${escapeHtml(drugName)}">
+                </div>
+                <div class="sm:col-span-2">
+                    <label class="block text-[11px] font-medium text-slate-500 mb-1 sm:hidden">จำนวน *</label>
+                    <input type="number" min="1" step="1" class="item-quantity w-full px-3 py-1.5 rounded-lg border border-slate-200 text-sm focus:ring-2 focus:ring-brand-500 outline-none bg-white" required placeholder="จำนวน" value="${quantity}">
+                </div>
+                <div class="sm:col-span-2">
+                    <label class="block text-[11px] font-medium text-slate-500 mb-1 sm:hidden">หน่วย *</label>
+                    <input type="text" class="item-unit w-full px-3 py-1.5 rounded-lg border border-slate-200 text-sm focus:ring-2 focus:ring-brand-500 outline-none bg-white" required placeholder="เช่น กล่อง, ขวด" value="${escapeHtml(unit)}">
+                </div>
+                <div class="sm:col-span-3">
+                    <label class="block text-[11px] font-medium text-slate-500 mb-1 sm:hidden">หมายเหตุยา</label>
+                    <input type="text" class="item-notes w-full px-3 py-1.5 rounded-lg border border-slate-200 text-sm focus:ring-2 focus:ring-brand-500 outline-none bg-white" placeholder="เช่น แถม 1 กล่อง" value="${escapeHtml(itemNotes)}">
+                </div>
+                <div class="sm:col-span-1 flex justify-end sm:justify-center">
+                    <button type="button" onclick="removeDrugItemRow('${rowId}')" class="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition cursor-pointer" title="ลบรายการนี้">
+                        <i class="fa-solid fa-trash-can"></i>
+                    </button>
+                </div>
+            `;
+
+            container.appendChild(row);
+        }
+
+        // Remove Dynamic Drug Item Row
+        function removeDrugItemRow(rowId) {
+            const container = document.getElementById('drugItemsContainer');
+            if (container.children.length <= 1) {
+                showToast('ต้องมีรายการยาอย่างน้อย 1 รายการ', 'error');
+                return;
+            }
+            const row = document.getElementById(rowId);
+            if (row) row.remove();
+        }
+
+        // Render Table and Dashboard Statistics
+        function renderOrders() {
+            const tbody = document.getElementById('ordersTableBody');
+            const emptyState = document.getElementById('emptyState');
+            const searchTerm = document.getElementById('searchInput').value.toLowerCase().trim();
+            const filterStatus = document.getElementById('filterStatus').value;
+            const dateStart = document.getElementById('filterDateStart').value;
+            const dateEnd = document.getElementById('filterDateEnd').value;
+
+            // Filter logic
+            const filteredOrders = orders.filter(order => {
+                const matchesRep = order.repName && order.repName.toLowerCase().includes(searchTerm);
+                const matchesCompany = order.company && order.company.toLowerCase().includes(searchTerm);
+                const matchesNotes = order.notes && order.notes.toLowerCase().includes(searchTerm);
+                
+                // Match search inside drug items list
+                const matchesDrugs = order.items && order.items.some(item => 
+                    (item.drugName && item.drugName.toLowerCase().includes(searchTerm)) ||
+                    (item.unit && item.unit.toLowerCase().includes(searchTerm)) ||
+                    (item.itemNotes && item.itemNotes.toLowerCase().includes(searchTerm))
+                );
+
+                const matchesSearch = matchesRep || matchesCompany || matchesNotes || matchesDrugs;
+
+                let matchesDate = true;
+                if (dateStart && order.date < dateStart) matchesDate = false;
+                if (dateEnd && order.date > dateEnd) matchesDate = false;
+
+                let matchesStatus = true;
+                if (filterStatus === 'pending') matchesStatus = (order.status !== 'received');
+                if (filterStatus === 'received') matchesStatus = (order.status === 'received');
+
+                return matchesSearch && matchesDate && matchesStatus;
+            });
+
+            // Sort by Date descending
+            filteredOrders.sort((a, b) => new Date(b.date) - new Date(a.date));
+
+            // Clear table
+            tbody.innerHTML = '';
+
+            if (filteredOrders.length === 0) {
+                emptyState.classList.remove('hidden');
+            } else {
+                emptyState.classList.add('hidden');
+                
+                filteredOrders.forEach(order => {
+                    const tr = document.createElement('tr');
+                    tr.className = 'hover:bg-slate-50/80 transition group';
+
+                    // Build formatted drug items HTML
+                    let itemsHtml = '<ul class="space-y-1 py-1">';
+                    (order.items || []).forEach((item) => {
+                        itemsHtml += `
+                            <li class="flex items-start gap-1.5 text-xs">
+                                <span class="inline-block w-1.5 h-1.5 rounded-full bg-brand-500 mt-1.5 shrink-0"></span>
+                                <div class="flex-1">
+                                    <span class="font-semibold text-slate-800">${escapeHtml(item.drugName)}</span>
+                                    <span class="bg-brand-50 text-brand-700 border border-brand-200/60 font-medium px-2 py-0.5 rounded-full text-[11px] ml-1">
+                                        จำนวน: ${parseFloat(item.quantity).toLocaleString('th-TH')} ${escapeHtml(item.unit || '')}
+                                    </span>
+                                    ${item.itemNotes ? `<span class="text-slate-400 text-[11px] ml-1">(${escapeHtml(item.itemNotes)})</span>` : ''}
+                                </div>
+                            </li>
+                        `;
+                    });
+                    itemsHtml += '</ul>';
+
+                    // Status Badge
+                    const isReceived = order.status === 'received';
+                    const statusBadgeHtml = isReceived ? `
+                        <button onclick="quickToggleReceived('${order.id}')" class="inline-flex flex-col text-left px-3 py-1.5 rounded-xl bg-emerald-50 border border-emerald-200 hover:bg-emerald-100 transition text-emerald-800 cursor-pointer" title="คลิกเพื่อเปลี่ยนสถานะ">
+                            <span class="text-xs font-bold flex items-center gap-1">
+                                <i class="fa-solid fa-circle-check text-emerald-600"></i> ได้รับสินค้าแล้ว
+                            </span>
+                            <span class="text-[11px] text-emerald-600 font-medium">
+                                รับเมื่อ: ${formatDate(order.receivedDate)}
+                            </span>
+                        </button>
+                    ` : `
+                        <button onclick="quickToggleReceived('${order.id}')" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-50 border border-amber-200 hover:bg-amber-100 transition text-amber-800 text-xs font-semibold cursor-pointer" title="คลิกเพื่อบันทึกการรับสินค้า">
+                            <i class="fa-solid fa-clock text-amber-500"></i> รอรับสินค้า
+                        </button>
+                    `;
+
+                    tr.innerHTML = `
+                        <td class="py-3.5 px-4 sm:px-6 font-semibold whitespace-nowrap text-brand-800">
+                            ${formatDate(order.date)}
+                        </td>
+                        <td class="py-3.5 px-4 sm:px-6">
+                            <div class="font-bold text-slate-800">${escapeHtml(order.company)}</div>
+                            <div class="text-xs text-slate-400 flex items-center gap-1 mt-0.5">
+                                <i class="fa-regular fa-user"></i> ${escapeHtml(order.repName)}
+                            </div>
+                        </td>
+                        <td class="py-3.5 px-4 sm:px-6">
+                            ${itemsHtml}
+                        </td>
+                        <td class="py-3.5 px-4 sm:px-6 whitespace-nowrap">
+                            ${statusBadgeHtml}
+                        </td>
+                        <td class="py-3.5 px-4 sm:px-6 text-xs text-slate-500 max-w-xs truncate" title="${escapeHtml(order.notes || '-')}">
+                            ${escapeHtml(order.notes || '-')}
+                        </td>
+                        <td class="py-3.5 px-4 sm:px-6 text-center whitespace-nowrap">
+                            <div class="flex items-center justify-center space-x-1">
+                                <button onclick="editOrder('${order.id}')" class="p-1.5 text-slate-400 hover:text-brand-600 hover:bg-brand-50 rounded-lg transition cursor-pointer" title="แก้ไข">
+                                    <i class="fa-solid fa-pen-to-square"></i>
+                                </button>
+                                <button onclick="confirmDeleteOrder('${order.id}')" class="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition cursor-pointer" title="ลบ">
+                                    <i class="fa-solid fa-trash-can"></i>
+                                </button>
+                            </div>
+                        </td>
+                    `;
+                    tbody.appendChild(tr);
+                });
+            }
+
+            // Update Dashboard Stats
+            updateDashboardStats(filteredOrders);
+        }
+
+        // Update Dashboard Summary Cards
+        function updateDashboardStats(dataList) {
+            const totalOrders = dataList.length;
+            const receivedOrders = dataList.filter(o => o.status === 'received').length;
+
+            const uniqueCompanies = new Set(dataList.map(item => item.company ? item.company.trim() : '')).size;
+            const uniqueReps = new Set(dataList.map(item => item.repName ? item.repName.trim() : '')).size;
+
+            document.getElementById('statTotalOrders').textContent = totalOrders.toLocaleString('th-TH') + ' รายการ';
+            document.getElementById('statReceivedOrders').textContent = `${receivedOrders.toLocaleString('th-TH')} / ${totalOrders.toLocaleString('th-TH')} รายการ`;
+            document.getElementById('statTotalCompanies').textContent = uniqueCompanies.toLocaleString('th-TH') + ' บริษัท';
+            document.getElementById('statTotalReps').textContent = uniqueReps.toLocaleString('th-TH') + ' ท่าน';
+        }
+
+        // Open Modal (Add Mode)
+        function openModal() {
+            document.getElementById('modalTitle').textContent = 'เพิ่มรายการสั่งยาใหม่';
+            document.getElementById('modalIcon').innerHTML = '<i class="fa-solid fa-plus"></i>';
+            document.getElementById('orderForm').reset();
+            document.getElementById('orderId').value = '';
+            document.getElementById('orderDate').valueAsDate = new Date();
+            document.getElementById('orderStatus').value = 'pending';
+            document.getElementById('receivedDate').valueAsDate = new Date();
+            toggleReceivedDateVisibility();
+            
+            // Clear drug items container and add 1 default row
+            const container = document.getElementById('drugItemsContainer');
+            container.innerHTML = '';
+            addDrugItemRow();
+
+            document.getElementById('orderModal').classList.remove('hidden');
+        }
+
+        // Close Modal
+        function closeModal() {
+            document.getElementById('orderModal').classList.add('hidden');
+        }
+
+        // Save Form (Add or Edit)
+        function handleFormSubmit(e) {
+            e.preventDefault();
+
+            const id = document.getElementById('orderId').value;
+            const date = document.getElementById('orderDate').value;
+            const repName = document.getElementById('repName').value.trim();
+            const company = document.getElementById('company').value.trim();
+            const status = document.getElementById('orderStatus').value;
+            const receivedDate = status === 'received' ? document.getElementById('receivedDate').value : '';
+            const notes = document.getElementById('notes').value.trim();
+
+            // Extract drug items from dynamic form rows
+            const itemRows = document.querySelectorAll('.drug-item-row');
+            const items = [];
+
+            itemRows.forEach(row => {
+                const drugName = row.querySelector('.item-drug-name').value.trim();
+                const quantity = parseFloat(row.querySelector('.item-quantity').value) || 0;
+                const unit = row.querySelector('.item-unit').value.trim();
+                const itemNotes = row.querySelector('.item-notes').value.trim();
+
+                if (drugName && quantity > 0) {
+                    items.push({ drugName, quantity, unit, itemNotes });
+                }
+            });
+
+            if (items.length === 0) {
+                showToast('กรุณาระบุรายการยาอย่างน้อย 1 รายการ', 'error');
+                return;
+            }
+
+            if (id) {
+                // Edit existing
+                const index = orders.findIndex(o => o.id === id);
+                if (index !== -1) {
+                    orders[index] = { id, date, repName, company, status, receivedDate, items, notes };
+                    showToast('ปรับปรุงข้อมูลเรียบร้อยแล้ว', 'success');
+                }
+            } else {
+                // Add new
+                const newOrder = {
+                    id: 'ORD-' + Date.now(),
+                    date,
+                    repName,
+                    company,
+                    status,
+                    receivedDate,
+                    items,
+                    notes
+                };
+                orders.push(newOrder);
+                showToast('บันทึกการสั่งยาใหม่เรียบร้อยแล้ว', 'success');
+            }
+
+            saveToLocalStorage();
+            renderOrders();
+            closeModal();
+        }
+
+        // Edit Order
+        function editOrder(id) {
+            const order = orders.find(o => o.id === id);
+            if (!order) return;
+
+            document.getElementById('modalTitle').textContent = 'แก้ไขรายการสั่งยา';
+            document.getElementById('modalIcon').innerHTML = '<i class="fa-solid fa-pen"></i>';
+            document.getElementById('orderId').value = order.id;
+            document.getElementById('orderDate').value = order.date;
+            document.getElementById('repName').value = order.repName;
+            document.getElementById('company').value = order.company;
+            document.getElementById('orderStatus').value = order.status || 'pending';
+            document.getElementById('receivedDate').value = order.receivedDate || '';
+            document.getElementById('notes').value = order.notes || '';
+
+            toggleReceivedDateVisibility();
+
+            // Populate drug items container
+            const container = document.getElementById('drugItemsContainer');
+            container.innerHTML = '';
+
+            if (order.items && order.items.length > 0) {
+                order.items.forEach(item => {
+                    addDrugItemRow(item.drugName, item.quantity, item.unit || 'กล่อง', item.itemNotes);
+                });
+            } else {
+                addDrugItemRow();
+            }
+
+            document.getElementById('orderModal').classList.remove('hidden');
+        }
+
+        // Delete Order Confirm
+        function confirmDeleteOrder(id) {
+            const order = orders.find(o => o.id === id);
+            if (!order) return;
+
+            showConfirmDialog({
+                title: 'ยืนยันการลบรายการ',
+                message: `คุณต้องการลบรายการสั่งยาของบริษัท "${order.company}" (ผู้แทน: ${order.repName}) ใช่หรือไม่? ข้อมูลนี้ไม่สามารถกู้คืนได้`,
+                iconClass: 'fa-solid fa-trash-can',
+                iconBg: 'bg-rose-100 text-rose-600',
+                okText: 'ลบรายการ',
+                okBg: 'bg-rose-600 hover:bg-rose-700',
+                showDateInput: false,
+                onConfirm: () => {
+                    orders = orders.filter(o => o.id !== id);
+                    saveToLocalStorage();
+                    renderOrders();
+                    showToast('ลบรายการเรียบร้อยแล้ว', 'info');
+                }
+            });
+        }
+
+        // Reset Filter controls
+        function resetFilters() {
+            document.getElementById('searchInput').value = '';
+            document.getElementById('filterStatus').value = 'all';
+            document.getElementById('filterDateStart').value = '';
+            document.getElementById('filterDateEnd').value = '';
+            renderOrders();
+            showToast('ล้างเงื่อนไขการกรองแล้ว', 'info');
+        }
+
+        // Export Orders to CSV File
+        function exportToCSV() {
+            if (orders.length === 0) {
+                showToast('ไม่มีข้อมูลสำหรับการส่งออก', 'error');
+                return;
+            }
+
+            // Headers in Thai
+            const headers = ['วันที่สั่ง (วัน/เดือน/ปี)', 'ชื่อผู้แทนยา', 'บริษัทยา', 'รายการยาที่สั่ง (ชื่อยา | จำนวน หน่วย | หมายเหตุยา)', 'สถานะการรับสินค้า', 'วันที่ได้รับสินค้า', 'หมายเหตุสั่งซื้อ'];
+            
+            const csvRows = [];
+            csvRows.push('\uFEFF' + headers.join(',')); // Add UTF-8 BOM for Excel Thai language compatibility
+
+            orders.forEach(item => {
+                const formattedDate = formatDate(item.date);
+                const itemsSummary = (item.items || [])
+                    .map(d => `${d.drugName} (จำนวน: ${d.quantity} ${d.unit || ''}${d.itemNotes ? ' - ' + d.itemNotes : ''})`)
+                    .join(' ; ');
+
+                const statusText = item.status === 'received' ? 'ได้รับสินค้าแล้ว' : 'รอรับสินค้า';
+                const receivedDateText = item.status === 'received' ? formatDate(item.receivedDate) : '-';
+
+                const row = [
+                    `"${formattedDate}"`,
+                    `"${(item.repName || '').replace(/"/g, '""')}"`,
+                    `"${(item.company || '').replace(/"/g, '""')}"`,
+                    `"${itemsSummary.replace(/"/g, '""')}"`,
+                    `"${statusText}"`,
+                    `"${receivedDateText}"`,
+                    `"${(item.notes || '').replace(/"/g, '""')}"`
+                ];
+                csvRows.push(row.join(','));
+            });
+
+            const csvContent = csvRows.join('\n');
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.setAttribute('href', url);
+            link.setAttribute('download', `Pharma_Orders_${new Date().toISOString().slice(0,10)}.csv`);
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            
+            showToast('ส่งออกไฟล์ CSV สำเร็จ', 'success');
+        }
+
+        // Backup Data as JSON File
+        function backupJSON() {
+            if (orders.length === 0) {
+                showToast('ไม่มีข้อมูลสำหรับสำรอง', 'error');
+                return;
+            }
+            const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(orders, null, 2));
+            const dlAnchor = document.createElement('a');
+            dlAnchor.setAttribute("href", dataStr);
+            dlAnchor.setAttribute("download", `pharma_backup_${new Date().toISOString().slice(0,10)}.json`);
+            document.body.appendChild(dlAnchor);
+            dlAnchor.click();
+            dlAnchor.remove();
+            showToast('ดาวน์โหลดไฟล์สำรองข้อมูล JSON เรียบร้อย', 'success');
+        }
+
+        // Restore Data from JSON File
+        function restoreJSON(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const importedData = JSON.parse(e.target.result);
+                    if (Array.isArray(importedData)) {
+                        orders = importedData;
+                        saveToLocalStorage();
+                        renderOrders();
+                        showToast('นำเข้าและคืนค่าข้อมูลสำเร็จแล้ว', 'success');
+                    } else {
+                        showToast('รูปแบบไฟล์ JSON ไม่ถูกต้อง', 'error');
+                    }
+                } catch (err) {
+                    showToast('เกิดข้อผิดพลาดในการอ่านไฟล์', 'error');
+                }
+            };
+            reader.readAsText(file);
+            event.target.value = '';
+        }
+
+        // Toast Notification System
+        function showToast(message, type = 'success') {
+            const container = document.getElementById('toastContainer');
+            const toast = document.createElement('div');
+            
+            let bgClass = 'bg-slate-800 text-white';
+            let icon = 'fa-circle-info';
+
+            if (type === 'success') {
+                bgClass = 'bg-emerald-600 text-white';
+                icon = 'fa-circle-check';
+            } else if (type === 'error') {
+                bgClass = 'bg-rose-600 text-white';
+                icon = 'fa-circle-exclamation';
+            } else if (type === 'info') {
+                bgClass = 'bg-brand-600 text-white';
+                icon = 'fa-circle-info';
+            }
+
+            toast.className = `${bgClass} pointer-events-auto px-4 py-3 rounded-xl shadow-lg flex items-center space-x-2 text-sm transition duration-300 transform translate-y-2 opacity-0`;
+            toast.innerHTML = `<i class="fa-solid ${icon}"></i> <span>${message}</span>`;
+
+            container.appendChild(toast);
+
+            setTimeout(() => {
+                toast.classList.remove('translate-y-2', 'opacity-0');
+            }, 10);
+
+            setTimeout(() => {
+                toast.classList.add('opacity-0', 'translate-y-2');
+                setTimeout(() => toast.remove(), 300);
+            }, 3000);
+        }
+
+        // Toggle visibility of received date input in modal
+        function toggleReceivedDateVisibility() {
+            const status = document.getElementById('orderStatus').value;
+            const receivedGroup = document.getElementById('receivedDateGroup');
+            if (!receivedGroup) return;
+            if (status === 'received') {
+                receivedGroup.classList.remove('hidden');
+            } else {
+                receivedGroup.classList.add('hidden');
+            }
+        }
+
+        // Quick Toggle Received Status from Table
+        function quickToggleReceived(id) {
+            const order = orders.find(o => o.id === id);
+            if (!order) return;
+
+            if (order.status === 'received') {
+                showConfirmDialog({
+                    title: 'เปลี่ยนสถานะเป็นรอรับสินค้า',
+                    message: `คุณต้องการเปลี่ยนสถานะของบริษัท "${order.company}" เป็น "รอรับสินค้า" ใช่หรือไม่?`,
+                    iconClass: 'fa-solid fa-clock',
+                    iconBg: 'bg-amber-100 text-amber-600',
+                    okText: 'ตกลง',
+                    okBg: 'bg-amber-600 hover:bg-amber-700',
+                    showDateInput: false,
+                    onConfirm: () => {
+                        order.status = 'pending';
+                        order.receivedDate = '';
+                        saveToLocalStorage();
+                        renderOrders();
+                        showToast('เปลี่ยนสถานะเป็นรอรับสินค้าแล้ว', 'info');
+                    }
+                });
+            } else {
+                const todayStr = new Date().toISOString().slice(0, 10);
+                showConfirmDialog({
+                    title: 'บันทึกการได้รับสินค้า',
+                    message: `ระบุวันที่ได้รับสินค้าสำหรับบริษัท "${order.company}"`,
+                    iconClass: 'fa-solid fa-circle-check',
+                    iconBg: 'bg-emerald-100 text-emerald-600',
+                    okText: 'บันทึกการรับสินค้า',
+                    okBg: 'bg-emerald-600 hover:bg-emerald-700',
+                    showDateInput: true,
+                    defaultDate: todayStr,
+                    onConfirm: (selectedDate) => {
+                        order.status = 'received';
+                        order.receivedDate = selectedDate || todayStr;
+                        saveToLocalStorage();
+                        renderOrders();
+                        showToast('บันทึกการรับสินค้าเรียบร้อยแล้ว', 'success');
+                    }
+                });
+            }
+        }
+
+        // Show Custom Confirmation Modal
+        function showConfirmDialog({ title, message, iconClass, iconBg, okText, okBg, showDateInput, defaultDate, onConfirm }) {
+            const modal = document.getElementById('confirmModal');
+            document.getElementById('confirmModalTitle').textContent = title || 'ยืนยันการทำรายการ';
+            document.getElementById('confirmModalMsg').textContent = message || '';
+            
+            const iconContainer = document.getElementById('confirmModalIcon');
+            iconContainer.className = `w-10 h-10 rounded-xl flex items-center justify-center text-xl shrink-0 ${iconBg || 'bg-amber-100 text-amber-600'}`;
+            iconContainer.innerHTML = `<i class="${iconClass || 'fa-solid fa-circle-question'}"></i>`;
+
+            const inputGroup = document.getElementById('confirmModalInputGroup');
+            const inputDate = document.getElementById('confirmModalInput');
+            if (showDateInput) {
+                inputGroup.classList.remove('hidden');
+                inputDate.value = defaultDate || new Date().toISOString().slice(0, 10);
+            } else {
+                inputGroup.classList.add('hidden');
+            }
+
+            const okBtn = document.getElementById('confirmModalOkBtn');
+            okBtn.textContent = okText || 'ตกลง';
+            okBtn.className = `px-4 py-2 rounded-xl text-white text-xs font-medium transition shadow cursor-pointer ${okBg || 'bg-brand-600 hover:bg-brand-700'}`;
+
+            confirmCallback = () => {
+                const val = showDateInput ? inputDate.value : true;
+                closeConfirmModal();
+                if (onConfirm) onConfirm(val);
+            };
+
+            okBtn.onclick = confirmCallback;
+            modal.classList.remove('hidden');
+        }
+
+        // Close Custom Confirmation Modal
+        function closeConfirmModal() {
+            const modal = document.getElementById('confirmModal');
+            if (modal) modal.classList.add('hidden');
+            confirmCallback = null;
+        }
+
+        // Helper: Format Date to Day/Month/Year (วัน/เดือน/ปี e.g. 15/09/2026)
+        function formatDate(dateStr) {
+            if (!dateStr) return '-';
+            const parts = dateStr.split('-');
+            if (parts.length === 3) {
+                return `${parts[2]}/${parts[1]}/${parts[0]}`;
+            }
+            return dateStr;
+        }
+
+        // Helper: Escape HTML string to prevent XSS
+        function escapeHtml(text) {
+            if (!text) return '';
+            const map = {
+                '&': '&amp;',
+                '<': '&lt;',
+                '>': '&gt;',
+                '"': '&quot;',
+                "'": '&#039;'
+            };
+            return String(text).replace(/[&<>"']/g, m => map[m]);
+        }
+
+        // Auto-initialize when page finishes loading
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', loadOrders);
+        } else {
+            loadOrders();
+        }
+    </script>
+</body>
+</html>
