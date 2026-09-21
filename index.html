@@ -70,6 +70,11 @@
                 </div>
             </div>
             <div class="flex items-center space-x-2">
+                <!-- Cloud Connection Status Button -->
+                <button onclick="openCloudModal()" id="cloudStatusBtn" class="bg-white/10 hover:bg-white/20 text-white font-medium px-3 py-2.5 rounded-xl transition border border-white/20 text-sm flex items-center gap-1.5 cursor-pointer" title="ตั้งค่าและดูสถานะคลาวด์">
+                    <i id="cloudStatusIcon" class="fa-solid fa-cloud text-amber-300"></i>
+                    <span id="cloudStatusText" class="hidden sm:inline text-xs">คลาวด์: ตั้งค่า</span>
+                </button>
                 <button onclick="openModal()" class="bg-emerald-500 hover:bg-emerald-600 text-white font-medium px-4 py-2.5 rounded-xl shadow-md hover:shadow-lg transition flex items-center gap-2 text-sm sm:text-base cursor-pointer">
                     <i class="fa-solid fa-circle-plus"></i>
                     <span>เพิ่มการสั่งยาใหม่</span>
@@ -326,13 +331,40 @@
                 <input type="date" id="confirmModalInput" class="w-full px-3 py-2 rounded-xl border border-slate-200 focus:ring-2 focus:ring-brand-500 outline-none text-sm">
             </div>
 
-            <div class="flex justify-end gap-2 pt-2">
-                <button onclick="closeConfirmModal()" class="px-4 py-2 rounded-xl text-slate-600 hover:bg-slate-100 text-xs font-medium transition cursor-pointer">
-                    ยกเลิก
+    <!-- Firebase Cloud Settings Modal -->
+    <div id="cloudModal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl shadow-2xl max-w-lg w-full p-6 space-y-4 max-h-[90vh] overflow-y-auto">
+            <div class="flex justify-between items-center border-b border-slate-100 pb-3">
+                <div class="flex items-center space-x-2 text-brand-600">
+                    <i class="fa-solid fa-cloud-arrow-up text-xl"></i>
+                    <h3 class="text-base font-bold text-slate-800">เชื่อมต่อระบบคลาวด์ (Firebase)</h3>
+                </div>
+                <button onclick="closeCloudModal()" class="text-slate-400 hover:text-slate-600 p-1">
+                    <i class="fa-solid fa-xmark text-lg"></i>
                 </button>
-                <button id="confirmModalOkBtn" class="px-4 py-2 rounded-xl bg-brand-600 hover:bg-brand-700 text-white text-xs font-medium transition shadow cursor-pointer">
-                    ตกลง
+            </div>
+
+            <div id="cloudModalStatusAlert" class="p-3 rounded-xl text-xs font-medium bg-amber-50 text-amber-800 border border-amber-200">
+                <i class="fa-solid fa-circle-info mr-1"></i> สถานะ: ยังไม่ได้เชื่อมต่อระบบคลาวด์
+            </div>
+
+            <div class="space-y-2 text-xs text-slate-600">
+                <p>วางข้อความรหัสตั้งค่า <b>Firebase Config</b> เพื่อเปิดใช้งานระบบซิงก์ข้อมูลออน์ไลน์อัตโนมัติ:</p>
+                <textarea id="firebaseConfigInput" rows="6" placeholder='{\n  "apiKey": "AIzaSy...",\n  "authDomain": "...",\n  "projectId": "...",\n  "storageBucket": "...",\n  "messagingSenderId": "...",\n  "appId": "..."\n}' class="w-full p-3 font-mono text-xs rounded-xl border border-slate-200 focus:ring-2 focus:ring-brand-500 outline-none bg-slate-50"></textarea>
+            </div>
+
+            <div class="flex flex-wrap justify-between items-center gap-2 pt-2 border-t border-slate-100">
+                <button onclick="clearCloudConfig()" class="text-rose-600 hover:text-rose-700 text-xs font-medium underline cursor-pointer">
+                    ยกเลิกการเชื่อมต่อ
                 </button>
+                <div class="flex gap-2">
+                    <button onclick="closeCloudModal()" class="px-4 py-2 rounded-xl text-slate-600 hover:bg-slate-100 text-xs font-medium transition cursor-pointer">
+                        ปิด
+                    </button>
+                    <button onclick="saveCloudConfig()" class="px-4 py-2 rounded-xl bg-brand-600 hover:bg-brand-700 text-white text-xs font-medium transition shadow cursor-pointer">
+                        บันทึกการเชื่อมต่อ
+                    </button>
+                </div>
             </div>
         </div>
     </div>
@@ -406,18 +438,6 @@
                     { drugName: 'Amoxicillin 500mg', quantity: 20, unit: 'กล่อง', itemNotes: '' }
                 ],
                 notes: 'ส่งของช่วงเช้า นัดวางบิลสัปดาห์หน้า'
-            },
-            {
-                id: 'ORD-1710000000002',
-                date: '2026-09-18',
-                repName: 'วิภาวรรณ สุขเสริฐ',
-                company: 'MediHealth Thailand',
-                status: 'pending',
-                receivedDate: '',
-                items: [
-                    { drugName: 'Omeprazole 20mg', quantity: 30, unit: 'กล่อง', itemNotes: 'โปรโมชั่นซื้อ 10 แถม 1' }
-                ],
-                notes: 'ติดด่วน ขอส่งภายในวันศุกร์'
             }
         ];
 
@@ -425,12 +445,211 @@
         let orders = [];
         let confirmCallback = null;
 
+        // Firebase Cloud Variables
+        let db = null;
+        let auth = null;
+        let currentUser = null;
+        let cloudConnected = false;
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'pharma-tracker';
+
+        // Default Embedded Firebase Configuration
+        const embeddedFirebaseConfig = {
+            apiKey: "AIzaSyDqUUQ2-V_OMtPO_XI2cuNsUcQyIB_EWqQ",
+            authDomain: "pharma-tracker-4d5f3.firebaseapp.com",
+            projectId: "pharma-tracker-4d5f3",
+            storageBucket: "pharma-tracker-4d5f3.firebasestorage.app",
+            messagingSenderId: "582461861254",
+            appId: "1:582461861254:web:9a59064eb4481590aa1007"
+        };
+
+        // Initialize Firebase Module dynamically
+        async function initFirebaseCloud() {
+            try {
+                let config = null;
+
+                // Priority 1: Check environment provided config
+                if (typeof __firebase_config !== 'undefined') {
+                    config = typeof __firebase_config === 'string' ? JSON.parse(__firebase_config) : __firebase_config;
+                } else {
+                    // Priority 2: Check local storage config
+                    const savedConfigStr = localStorage.getItem('pharma_firebase_config');
+                    if (savedConfigStr) {
+                        try {
+                            config = JSON.parse(savedConfigStr);
+                        } catch(e) {
+                            // Extract JSON object if pasted as js code
+                            const match = savedConfigStr.match(/\{[\s\S]*\}/);
+                            if (match) config = JSON.parse(match[0]);
+                        }
+                    }
+                }
+
+                // Priority 3: Fallback to embedded default Firebase config
+                if (!config || !config.apiKey) {
+                    config = embeddedFirebaseConfig;
+                }
+
+                if (!config || !config.apiKey) {
+                    updateCloudUI(false, 'คลาวด์: ไม่ได้ตั้งค่า');
+                    return;
+                }
+
+                const { initializeApp } = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js");
+                const { getAuth, signInAnonymously, signInWithCustomToken } = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js");
+                const { getFirestore, collection, doc, setDoc, deleteDoc, onSnapshot } = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js");
+
+                const app = initializeApp(config);
+                auth = getAuth(app);
+                db = getFirestore(app);
+
+                // Authenticate
+                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                    const userCred = await signInWithCustomToken(auth, __initial_auth_token);
+                    currentUser = userCred.user;
+                } else {
+                    const userCred = await signInAnonymously(auth);
+                    currentUser = userCred.user;
+                }
+
+                cloudConnected = true;
+                updateCloudUI(true, 'คลาวด์: ซิงก์แล้ว');
+
+                // Realtime Sync Listener
+                const ordersCollection = collection(db, 'artifacts', appId, 'public', 'data', 'orders');
+                onSnapshot(ordersCollection, (snapshot) => {
+                    const cloudOrders = [];
+                    snapshot.forEach(docSnap => {
+                        const data = docSnap.data();
+                        const norm = normalizeOrder({ ...data, id: docSnap.id });
+                        if (norm) cloudOrders.push(norm);
+                    });
+
+                    if (cloudOrders.length > 0) {
+                        orders = deepScanAndMergeAllLocalStorage(cloudOrders);
+                        saveToLocalStorage();
+                        renderOrders();
+                    } else if (orders.length > 0) {
+                        // Push initial local orders to cloud if cloud is empty
+                        syncAllToCloud();
+                    }
+                }, (error) => {
+                    console.error("Firestore onSnapshot error:", error);
+                    updateCloudUI(false, 'คลาวด์: ข้อผิดพลาด');
+                });
+
+            } catch (err) {
+                console.error("Firebase init failed:", err);
+                cloudConnected = false;
+                updateCloudUI(false, 'คลาวด์: เชื่อมต่อไม่ได้');
+            }
+        }
+
+        // Save or update order in Firestore
+        async function saveOrderToCloud(order) {
+            if (!cloudConnected || !db || !currentUser) return;
+            try {
+                const { doc, setDoc } = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js");
+                await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'orders', order.id), order);
+            } catch (e) {
+                console.error('Save to cloud failed:', e);
+            }
+        }
+
+        // Delete order from Firestore
+        async function deleteOrderFromCloud(orderId) {
+            if (!cloudConnected || !db || !currentUser) return;
+            try {
+                const { doc, deleteDoc } = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js");
+                await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'orders', orderId));
+            } catch (e) {
+                console.error('Delete from cloud failed:', e);
+            }
+        }
+
+        // Sync all local orders to cloud
+        async function syncAllToCloud() {
+            if (!cloudConnected || !db || !currentUser) return;
+            orders.forEach(ord => saveOrderToCloud(ord));
+        }
+
+        // Update Cloud UI Status
+        function updateCloudUI(isConnected, labelText) {
+            const btnText = document.getElementById('cloudStatusText');
+            const icon = document.getElementById('cloudStatusIcon');
+            const alertBox = document.getElementById('cloudModalStatusAlert');
+
+            if (btnText) btnText.textContent = labelText;
+            if (icon) {
+                if (isConnected) {
+                    icon.className = 'fa-solid fa-cloud text-emerald-400 animate-pulse';
+                } else {
+                    icon.className = 'fa-solid fa-cloud text-amber-300';
+                }
+            }
+            if (alertBox) {
+                if (isConnected) {
+                    alertBox.className = 'p-3 rounded-xl text-xs font-medium bg-emerald-50 text-emerald-800 border border-emerald-200';
+                    alertBox.innerHTML = '<i class="fa-solid fa-circle-check mr-1"></i> สถานะ: เชื่อมต่อคลาวด์เรียบร้อยแล้ว (ข้อมูลซิงก์อัตโนมัติ)';
+                } else {
+                    alertBox.className = 'p-3 rounded-xl text-xs font-medium bg-amber-50 text-amber-800 border border-amber-200';
+                    alertBox.innerHTML = '<i class="fa-solid fa-circle-info mr-1"></i> สถานะ: ยังไม่ได้เชื่อมต่อระบบคลาวด์ (ใช้งานข้อมูลในเครื่อง)';
+                }
+            }
+        }
+
+        function openCloudModal() {
+            const saved = localStorage.getItem('pharma_firebase_config') || JSON.stringify(embeddedFirebaseConfig, null, 2);
+            document.getElementById('firebaseConfigInput').value = saved;
+            document.getElementById('cloudModal').classList.remove('hidden');
+        }
+
+        function closeCloudModal() {
+            document.getElementById('cloudModal').classList.add('hidden');
+        }
+
+        function saveCloudConfig() {
+            const val = document.getElementById('firebaseConfigInput').value.trim();
+            if (!val) {
+                showToast('กรุณากรอกรหัสตั้งค่า Firebase', 'error');
+                return;
+            }
+            try {
+                // Validate json
+                let parsed = null;
+                try {
+                    parsed = JSON.parse(val);
+                } catch(e) {
+                    const match = val.match(/\{[\s\S]*\}/);
+                    if (match) parsed = JSON.parse(match[0]);
+                }
+
+                if (!parsed || !parsed.apiKey) {
+                    showToast('รูปแบบ Firebase Config ไม่ถูกต้อง', 'error');
+                    return;
+                }
+
+                localStorage.setItem('pharma_firebase_config', JSON.stringify(parsed));
+                closeCloudModal();
+                showToast('บันทึกการตั้งค่าแล้ว กำลังเชื่อมต่อคลาวด์...', 'info');
+                initFirebaseCloud();
+            } catch (err) {
+                showToast('เกิดข้อผิดพลาดในการอ่านรหัสตั้งค่า', 'error');
+            }
+        }
+
+        function clearCloudConfig() {
+            localStorage.removeItem('pharma_firebase_config');
+            cloudConnected = false;
+            updateCloudUI(false, 'คลาวด์: ตั้งค่า');
+            closeCloudModal();
+            showToast('ยกเลิกการเชื่อมต่อคลาวด์เรียบร้อยแล้ว', 'info');
+        }
+
         function normalizeOrder(order) {
             if (!order || typeof order !== 'object') return null;
 
             let items = Array.isArray(order.items) ? order.items : [];
             
-            // Convert legacy single-drug format
             if (items.length === 0 && (order.drugName || order.drug_name || order.name || order.title)) {
                 items = [{
                     drugName: order.drugName || order.drug_name || order.name || order.title || 'ไม่ระบุชื่อยา',
@@ -440,7 +659,6 @@
                 }];
             }
 
-            // Standardize items array
             items = items.map(item => ({
                 drugName: item.drugName || item.drug_name || item.name || 'ไม่ระบุชื่อยา',
                 quantity: parseFloat(item.quantity || item.qty || item.amount) || 1,
@@ -449,7 +667,6 @@
             }));
 
             if (items.length === 0) {
-                // If company or repName or notes exist, don't discard
                 if (order.company || order.repName || order.rep_name || order.company_name || order.notes || order.date) {
                     items = [{ drugName: order.drugName || order.drug_name || 'ไม่ระบุชื่อยา', quantity: parseFloat(order.quantity) || 1, unit: order.unit || 'กล่อง', itemNotes: order.itemNotes || '' }];
                 } else {
@@ -871,7 +1088,6 @@
             const receivedDate = status === 'received' ? document.getElementById('receivedDate').value : '';
             const notes = document.getElementById('notes').value.trim();
 
-            // Extract drug items from dynamic form rows
             const itemRows = document.querySelectorAll('.drug-item-row');
             const items = [];
 
@@ -891,16 +1107,17 @@
                 return;
             }
 
+            let savedOrder = null;
+
             if (id) {
-                // Edit existing
                 const index = orders.findIndex(o => o.id === id);
                 if (index !== -1) {
-                    orders[index] = { id, date, repName, company, status, receivedDate, items, notes };
+                    savedOrder = { id, date, repName, company, status, receivedDate, items, notes };
+                    orders[index] = savedOrder;
                     showToast('ปรับปรุงข้อมูลเรียบร้อยแล้ว', 'success');
                 }
             } else {
-                // Add new
-                const newOrder = {
+                savedOrder = {
                     id: 'ORD-' + Date.now(),
                     date,
                     repName,
@@ -910,11 +1127,12 @@
                     items,
                     notes
                 };
-                orders.push(newOrder);
+                orders.push(savedOrder);
                 showToast('บันทึกการสั่งยาใหม่เรียบร้อยแล้ว', 'success');
             }
 
             saveToLocalStorage();
+            if (savedOrder) saveOrderToCloud(savedOrder);
             renderOrders();
             closeModal();
         }
@@ -967,6 +1185,7 @@
                 onConfirm: () => {
                     orders = orders.filter(o => o.id !== id);
                     saveToLocalStorage();
+                    deleteOrderFromCloud(id);
                     renderOrders();
                     showToast('ลบรายการเรียบร้อยแล้ว', 'info');
                 }
@@ -1226,9 +1445,13 @@
 
         // Auto-initialize when page finishes loading
         if (document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', loadOrders);
+            document.addEventListener('DOMContentLoaded', () => {
+                loadOrders();
+                initFirebaseCloud();
+            });
         } else {
             loadOrders();
+            initFirebaseCloud();
         }
     </script>
 </body>
