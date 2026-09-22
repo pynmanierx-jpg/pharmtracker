@@ -796,11 +796,12 @@
             const addedCount = merged.length - orders.length;
             orders = merged;
             saveToLocalStorage();
+            syncAllToCloud(); // ซิงก์ข้อมูลกู้คืนทั้งหมดขึ้นคลาวด์
             renderOrders();
             closeRecoveryModal();
 
             if (addedCount > 0) {
-                showToast(`กู้คืนสำเร็จ! ดึงข้อมูลเก่ากลับเข้ามาเพิ่มอีก ${addedCount} รายการ (รวมเป็น ${orders.length} รายการ)`, 'success');
+                showToast(`กู้คืนสำเร็จ! ดึงข้อมูลเก่ากลับเข้ามาเพิ่มอีก ${addedCount} รายการ และซิงก์คลาวด์แล้ว`, 'success');
             } else {
                 showToast(`กู้คืนเรียบร้อยแล้ว ไม่พบรายการเก่าเพิ่มเติม (รวมเป็น ${orders.length} รายการ)`, 'info');
             }
@@ -830,10 +831,11 @@
 
                 if (added > 0 || orders.length > 0) {
                     saveToLocalStorage();
+                    syncAllToCloud(); // ซิงก์รายการใหม่ที่นำเข้าผ่านข้อความขึ้นคลาวด์
                     renderOrders();
                     closeRecoveryModal();
                     document.getElementById('pasteJsonInput').value = '';
-                    showToast(`นำเข้าสำเร็จ! เพิ่มข้อมูล ${added} รายการ`, 'success');
+                    showToast(`นำเข้าสำเร็จ! เพิ่มข้อมูล ${added} รายการ และซิงก์คลาวด์เรียบร้อย`, 'success');
                 } else {
                     showToast('ไม่พบข้อมูลสั่งยาในข้อความที่ระบุ', 'error');
                 }
@@ -1252,10 +1254,11 @@
                 try {
                     const importedData = JSON.parse(e.target.result);
                     if (Array.isArray(importedData)) {
-                        orders = importedData;
+                        orders = importedData.map(item => normalizeOrder(item)).filter(Boolean);
                         saveToLocalStorage();
+                        syncAllToCloud(); // ซิงก์ข้อมูลจากไฟล์ JSON ขึ้นคลาวด์ทันที
                         renderOrders();
-                        showToast('นำเข้าและคืนค่าข้อมูลสำเร็จแล้ว', 'success');
+                        showToast('นำเข้าและซิงก์ข้อมูลลงคลาวด์สำเร็จแล้ว', 'success');
                     } else {
                         showToast('รูปแบบไฟล์ JSON ไม่ถูกต้อง', 'error');
                     }
@@ -1328,6 +1331,7 @@
                         order.status = 'pending';
                         order.receivedDate = '';
                         saveToLocalStorage();
+                        saveOrderToCloud(order); // อัปเดตสถานะขึ้นคลาวด์
                         renderOrders();
                         showToast('เปลี่ยนสถานะเป็นรอรับสินค้าแล้ว', 'info');
                     }
@@ -1347,6 +1351,7 @@
                         order.status = 'received';
                         order.receivedDate = selectedDate || todayStr;
                         saveToLocalStorage();
+                        saveOrderToCloud(order); // อัปเดตสถานะขึ้นคลาวด์
                         renderOrders();
                         showToast('บันทึกการรับสินค้าเรียบร้อยแล้ว', 'success');
                     }
